@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const { parse } = require("csv-parse/sync");
+const swaggerUi = require("swagger-ui-express");
+const swaggerJSDoc = require("swagger-jsdoc");
 
 /**
  * In-memory claims store. Resets on server restart.
@@ -24,6 +26,44 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 app.use(
   cors({
     origin: CORS_ORIGIN,
+  })
+);
+
+/**
+ * --- OpenAPI / Swagger configuration ---
+ *
+ * /openapi.json -> machine-readable OpenAPI 3.0 schema
+ * /docs         -> Swagger UI (interactive)
+ *
+ * Note: We generate the spec from JSDoc comments in this file.
+ */
+const openApiSpec = swaggerJSDoc({
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "Fraud Detection Backend API",
+      version: "1.0.0",
+      description:
+        "Express backend for insurance claim risk scoring and in-memory storage.",
+    },
+    servers: [{ url: "/" }],
+  },
+  apis: [__filename],
+});
+
+app.get("/openapi.json", (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.status(200).send(openApiSpec);
+});
+
+app.use(
+  "/docs",
+  swaggerUi.serve,
+  swaggerUi.setup(openApiSpec, {
+    explorer: true,
+    swaggerOptions: {
+      url: "/openapi.json",
+    },
   })
 );
 
@@ -167,16 +207,127 @@ function validateRow(normalized) {
   return { ok: errors.length === 0, errors };
 }
 
-// Health endpoint for readiness checks / container monitors
+/**
+ * @openapi
+ * /health:
+ *   get:
+ *     summary: Health check
+ *     description: Readiness/liveness endpoint for container monitors.
+ *     tags:
+ *       - Health
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 service:
+ *                   type: string
+ */
 app.get("/health", (req, res) => {
   res.json({ ok: true, service: "fraud_detection_backend" });
 });
 
 /**
- * POST /api/claims/upload
- * Accepts:
- * - Content-Type: text/csv with raw CSV body
- * - Content-Type: application/json with body { csv: "..." }
+ * @openapi
+ * components:
+ *   schemas:
+ *     Claim:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *         claim_amount:
+ *           type: string
+ *           description: Claim amount (numeric value in input; stored as string from normalized CSV).
+ *         incident_type:
+ *           type: string
+ *         days_since_incident:
+ *           type: string
+ *         policy_tenure_months:
+ *           type: string
+ *         prior_claims_count:
+ *           type: string
+ *         description:
+ *           type: string
+ *         riskScore:
+ *           type: number
+ *         riskLevel:
+ *           type: string
+ *           enum: [High, Medium, Low]
+ *         explanations:
+ *           type: array
+ *           items:
+ *             type: string
+ *     UploadRequestJson:
+ *       type: object
+ *       required: [csv]
+ *       properties:
+ *         csv:
+ *           type: string
+ *           description: Raw CSV content as a string.
+ *     UploadResponse:
+ *       type: object
+ *       properties:
+ *         claims:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/Claim'
+ *         warnings:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               row:
+ *                 type: number
+ *               errors:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *
+ * /api/claims/upload:
+ *   post:
+ *     summary: Upload claims CSV and compute risk scoring
+ *     description: |
+ *       Accepts either raw CSV (text/csv) or JSON { csv: "..." } and returns accepted claims with risk score/level and warnings for invalid rows.
+ *     tags:
+ *       - Claims
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         text/csv:
+ *           schema:
+ *             type: string
+ *             description: Raw CSV body.
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UploadRequestJson'
+ *     responses:
+ *       201:
+ *         description: Created (at least one row accepted)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UploadResponse'
+ *       400:
+ *         description: Invalid CSV or all rows invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                 details:
+ *                   type: string
+ *                 warnings:
+ *                   type: array
+ *                   items:
+ *                     type: object
  */
 app.post("/api/claims/upload", (req, res) => {
   let csvText = "";
@@ -239,11 +390,64 @@ app.post("/api/claims/upload", (req, res) => {
   return res.status(201).json({ claims: accepted, warnings });
 });
 
+/**
+ * @openapi
+ * /api/claims:
+ *   get:
+ *     summary: List all uploaded claims
+ *     tags:
+ *       - Claims
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 claims:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Claim'
+ */
 app.get("/api/claims", (req, res) => {
   const claims = Array.from(claimsStore.values());
   res.json({ claims });
 });
 
+/**
+ * @openapi
+ * /api/claims/{id}:
+ *   get:
+ *     summary: Get a single claim by id
+ *     tags:
+ *       - Claims
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 claim:
+ *                   $ref: '#/components/schemas/Claim'
+ *       404:
+ *         description: Claim not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ */
 app.get("/api/claims/:id", (req, res) => {
   const claim = claimsStore.get(String(req.params.id));
   if (!claim) return res.status(404).json({ error: "Claim not found." });
