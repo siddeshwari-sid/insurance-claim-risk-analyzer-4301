@@ -41,28 +41,40 @@ const allowedOrigins = (() => {
     .filter(Boolean);
 })();
 
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      // Allow server-to-server / curl requests (no origin)
-      if (!origin) return cb(null, true);
+const corsOptions = {
+  origin: (origin, cb) => {
+    // Allow server-to-server / curl requests (no origin)
+    if (!origin) return cb(null, true);
 
-      // Explicitly configured to allow all.
-      if (allowedOrigins === '*') return cb(null, true);
+    // Explicitly configured to allow all.
+    if (allowedOrigins === '*') return cb(null, true);
 
-      // Allowed list.
-      if (Array.isArray(allowedOrigins) && allowedOrigins.includes(origin)) {
-        return cb(null, true);
-      }
+    // Allowed list.
+    if (Array.isArray(allowedOrigins) && allowedOrigins.includes(origin)) {
+      return cb(null, true);
+    }
 
-      // Disallow without throwing (prevents 500 on preflight).
-      return cb(null, false);
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    optionsSuccessStatus: 204,
-  })
-);
+    // Disallow without throwing (prevents 500 on preflight).
+    return cb(null, false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+
+/**
+ * IMPORTANT:
+ * Browsers send a CORS preflight OPTIONS request for cross-origin requests with
+ * non-simple headers (e.g., Content-Type: text/csv). If Express answers OPTIONS
+ * without CORS headers, the browser blocks the real request and surfaces it as
+ * "Failed to fetch".
+ *
+ * Explicitly handling OPTIONS with the same cors() middleware guarantees the
+ * correct Access-Control-* headers are present for preflight.
+ */
+app.options('*', cors(corsOptions));
 app.set('trust proxy', true);
 app.use('/docs', swaggerUi.serve, (req, res, next) => {
   const host = req.get('host');           // may or may not include port
