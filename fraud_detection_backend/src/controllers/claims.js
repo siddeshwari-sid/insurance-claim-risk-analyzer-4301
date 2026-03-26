@@ -13,6 +13,10 @@ class ClaimsController {
      * Accepts:
      * - Content-Type: text/csv with raw CSV body
      * - Content-Type: application/json with {"csv": "..."}
+     *
+     * This endpoint applies both single-claim heuristics and cross-claim fraud
+     * signals based on the current in-memory store (duplicate claim ids, repeated
+     * claimant/provider/location patterns).
      */
     const contentType = (req.headers['content-type'] || '').toLowerCase();
 
@@ -22,7 +26,7 @@ class ClaimsController {
       csvText = typeof req.body === 'string' ? req.body : '';
     } else {
       // JSON body
-      csvText = (req.body && req.body.csv) ? String(req.body.csv) : '';
+      csvText = req.body && req.body.csv ? String(req.body.csv) : '';
     }
 
     const parsed = parseClaimsCsv(csvText);
@@ -36,12 +40,17 @@ class ClaimsController {
     }
 
     const stored = parsed.claims.map((claim) => {
-      const scoring = scoreClaim(claim);
+      // Cross-claim fraud signals must be computed BEFORE inserting this claim,
+      // so the claim doesn't count itself.
+      const signals = claimsStore.getCrossClaimSignals(claim);
+      const scoring = scoreClaim(claim, signals);
+
       return claimsStore.createClaim({
         ...claim,
         riskLevel: scoring.riskLevel,
         riskScore: scoring.score,
         explanations: scoring.explanations,
+        fraudSignals: scoring.fraudSignals,
       });
     });
 
@@ -59,6 +68,11 @@ class ClaimsController {
         policyTenureMonths: c.policyTenureMonths,
         priorClaimsCount: c.priorClaimsCount,
         riskLevel: c.riskLevel,
+        // Include these in the upload response so the frontend can immediately surface new signals.
+        riskScore: c.riskScore,
+        explanations: c.explanations,
+        fraudSignals: c.fraudSignals,
+        createdAt: c.createdAt,
       })),
     });
   }
@@ -87,6 +101,9 @@ class ClaimsController {
         priorClaimsCount: c.priorClaimsCount,
         riskLevel: c.riskLevel,
         createdAt: c.createdAt,
+        // Provide a short explanation preview for queue display/search.
+        explanations: c.explanations,
+        fraudSignals: c.fraudSignals,
       })),
     });
   }

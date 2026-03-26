@@ -41,6 +41,34 @@ const router = express.Router();
  *         createdAt:
  *           type: string
  *           format: date-time
+ *         riskScore:
+ *           type: number
+ *           description: Numeric score used to derive risk level.
+ *           example: 9
+ *         explanations:
+ *           type: array
+ *           description: Explanations for the risk score/level. Included on list/upload responses for UI display.
+ *           items:
+ *             type: string
+ *           example:
+ *             - "Very high claim amount (>= 25,000)."
+ *             - "Late filing: more than 30 days since incident."
+ *         fraudSignals:
+ *           type: object
+ *           description: Cross-claim fraud signals computed from the in-memory store (duplicate/repetition patterns).
+ *           properties:
+ *             duplicateClaimIdCount:
+ *               type: number
+ *               example: 1
+ *             priorClaimantCount:
+ *               type: number
+ *               example: 3
+ *             priorProviderCount:
+ *               type: number
+ *               example: 2
+ *             priorLocationCount:
+ *               type: number
+ *               example: 4
  *     Claim:
  *       allOf:
  *         - $ref: '#/components/schemas/ClaimSummary'
@@ -48,17 +76,6 @@ const router = express.Router();
  *           properties:
  *             description:
  *               type: string
- *             riskScore:
- *               type: number
- *               description: Numeric score used to derive risk level.
- *               example: 9
- *             explanations:
- *               type: array
- *               items:
- *                 type: string
- *               example:
- *                 - "Very high claim amount (>= 25,000)."
- *                 - "Late filing: more than 30 days since incident."
  */
 
 /**
