@@ -214,4 +214,47 @@ router.get('/api/claims', claimsController.list.bind(claimsController));
  */
 router.get('/api/claims/:id', claimsController.getById.bind(claimsController));
 
+/**
+ * @swagger
+ * /api/config:
+ *   get:
+ *     summary: Runtime API configuration for frontend discovery
+ *     description: |
+ *       Returns the backend base URL to help the frontend route API requests correctly in preview
+ *       environments where build-time env vars may not be injected. The frontend should use
+ *       `apiBaseUrl` for subsequent requests.
+ *     responses:
+ *       200:
+ *         description: Backend runtime config
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status: { type: string, example: ok }
+ *                 apiBaseUrl:
+ *                   type: string
+ *                   description: Canonical backend origin (scheme + host + optional port), without trailing slash.
+ *                   example: https://vscode-internal-XXXX.beta01.cloud.kavia.ai:3001
+ */
+router.get('/api/config', (req, res) => {
+  const host = req.get('host'); // may or may not include port
+  const actualPort = req.socket?.localPort;
+  const hasPort = typeof host === 'string' && host.includes(':');
+
+  // Respect reverse proxies when present, but fall back sensibly.
+  const forwardedProto = req.get('x-forwarded-proto');
+  const protocol = (forwardedProto ? forwardedProto.split(',')[0].trim() : null) || (req.secure ? 'https' : req.protocol);
+
+  const needsPort =
+    !hasPort &&
+    actualPort &&
+    ((protocol === 'http' && actualPort !== 80) || (protocol === 'https' && actualPort !== 443));
+
+  const fullHost = needsPort ? `${host}:${actualPort}` : host;
+  const apiBaseUrl = `${protocol}://${fullHost}`.replace(/\/$/, '');
+
+  res.status(200).json({ status: 'ok', apiBaseUrl });
+});
+
 module.exports = router;
