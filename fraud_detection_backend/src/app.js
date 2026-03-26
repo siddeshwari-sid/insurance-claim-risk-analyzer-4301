@@ -82,12 +82,10 @@ const corsOptions = {
       return cb(null, true);
     }
 
-    // If not explicitly configured, allow Kavia hosted frontend origins.
-    // This fixes browser CSV uploads failing due to blocked CORS.
-    if (Array.isArray(allowedOrigins) && allowedOrigins.length > 0) {
-      return cb(null, false);
-    }
-
+    // Allow Kavia hosted frontend origins (preview).
+    // IMPORTANT: this must be checked even when allowedOrigins is a non-empty
+    // array (default dev list), otherwise preview uploads will fail with
+    // browser "Failed to fetch" due to blocked CORS.
     if (isKaviaHostedOrigin(origin)) return cb(null, true);
 
     // Disallow without throwing (prevents 500 on preflight).
