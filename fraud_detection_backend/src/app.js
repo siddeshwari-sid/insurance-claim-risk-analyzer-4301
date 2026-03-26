@@ -8,29 +8,61 @@ const swaggerSpec = require('../swagger');
 const app = express();
 
 const allowedOrigins = (() => {
-  const env = process.env.REACT_APP_FRONTEND_URL || process.env.FRONTEND_URL || '';
+  /**
+   * Compute allowed origins for CORS.
+   *
+   * Priority:
+   * 1) ALLOWED_ORIGINS (comma-separated) or "*" to allow all
+   * 2) FRONTEND_URL (single origin) (legacy)
+   * 3) Local dev defaults
+   *
+   * IMPORTANT: Never throw from CORS origin callback; for disallowed origins,
+   * return `cb(null, false)` so preflight doesn't become HTTP 500 (which browsers
+   * surface as "Failed to fetch").
+   */
+  const env =
+    process.env.ALLOWED_ORIGINS ||
+    process.env.FRONTEND_URL ||
+    process.env.REACT_APP_FRONTEND_URL ||
+    '';
+
+  const trimmed = String(env).trim();
+  if (trimmed === '*') return '*';
+
   // If not configured, allow common dev origins (and still allow non-browser requests with no Origin).
-  if (!env) {
+  if (!trimmed) {
     return ['http://localhost:3000', 'http://127.0.0.1:3000'];
   }
+
   // Support comma-separated list
-  return env.split(',').map((s) => s.trim()).filter(Boolean);
+  return trimmed
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 })();
 
-app.use(cors({
-  origin: (origin, cb) => {
-    // Allow server-to-server / curl requests (no origin)
-    if (!origin) return cb(null, true);
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // Allow server-to-server / curl requests (no origin)
+      if (!origin) return cb(null, true);
 
-    // If explicitly configured with "*", allow everything.
-    if (allowedOrigins === '*') return cb(null, true);
+      // Explicitly configured to allow all.
+      if (allowedOrigins === '*') return cb(null, true);
 
-    if (allowedOrigins.includes(origin)) return cb(null, true);
-    return cb(new Error(`CORS blocked origin: ${origin}`));
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+      // Allowed list.
+      if (Array.isArray(allowedOrigins) && allowedOrigins.includes(origin)) {
+        return cb(null, true);
+      }
+
+      // Disallow without throwing (prevents 500 on preflight).
+      return cb(null, false);
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 204,
+  })
+);
 app.set('trust proxy', true);
 app.use('/docs', swaggerUi.serve, (req, res, next) => {
   const host = req.get('host');           // may or may not include port
