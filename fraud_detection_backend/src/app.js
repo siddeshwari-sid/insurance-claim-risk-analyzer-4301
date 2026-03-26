@@ -7,10 +7,23 @@ const swaggerSpec = require('../swagger');
 // Initialize express app
 const app = express();
 
+const allowedOrigins = (() => {
+  const env = process.env.REACT_APP_FRONTEND_URL || process.env.FRONTEND_URL || '';
+  if (!env) return '*';
+  // Support comma-separated list
+  return env.split(',').map((s) => s.trim()).filter(Boolean);
+})();
+
 app.use(cors({
-  origin: '*',
+  origin: (origin, cb) => {
+    if (allowedOrigins === '*') return cb(null, true);
+    // Allow server-to-server / curl requests (no origin)
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error(`CORS blocked origin: ${origin}`));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.set('trust proxy', true);
 app.use('/docs', swaggerUi.serve, (req, res, next) => {
@@ -38,10 +51,18 @@ app.use('/docs', swaggerUi.serve, (req, res, next) => {
   swaggerUi.setup(dynamicSpec)(req, res, next);
 });
 
-// Parse JSON request body
-app.use(express.json());
+/**
+ * Body parsing:
+ * - JSON for most endpoints
+ * - text/csv for CSV upload endpoint
+ */
+app.use(express.json({ limit: '5mb' }));
+app.use(express.text({ type: ['text/*', 'text/csv'], limit: '10mb' }));
+
+const openApiRoute = require('./routes/openapi');
 
 // Mount routes
+app.use('/', openApiRoute);
 app.use('/', routes);
 
 // Error handling middleware
