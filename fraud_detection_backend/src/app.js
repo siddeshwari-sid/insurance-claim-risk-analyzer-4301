@@ -9,16 +9,22 @@ const app = express();
 
 const allowedOrigins = (() => {
   const env = process.env.REACT_APP_FRONTEND_URL || process.env.FRONTEND_URL || '';
-  if (!env) return '*';
+  // If not configured, allow common dev origins (and still allow non-browser requests with no Origin).
+  if (!env) {
+    return ['http://localhost:3000', 'http://127.0.0.1:3000'];
+  }
   // Support comma-separated list
   return env.split(',').map((s) => s.trim()).filter(Boolean);
 })();
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (allowedOrigins === '*') return cb(null, true);
     // Allow server-to-server / curl requests (no origin)
     if (!origin) return cb(null, true);
+
+    // If explicitly configured with "*", allow everything.
+    if (allowedOrigins === '*') return cb(null, true);
+
     if (allowedOrigins.includes(origin)) return cb(null, true);
     return cb(new Error(`CORS blocked origin: ${origin}`));
   },
