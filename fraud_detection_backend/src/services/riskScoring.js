@@ -12,7 +12,7 @@
  *
  * Base single-claim rules:
  * - claimAmount >= 10000 => +4
- * - claimAmount >= 25000 => +6 (instead of +4; highest applicable)
+ * - claimAmount > 50000 => +6 (instead of +4; highest applicable)
  * - daysSinceIncident > 30 => +2
  * - policyTenureMonths < 3 => +2
  * - priorClaimsCount >= 3 => +3
@@ -96,8 +96,8 @@ function scoreClaim(claim, crossClaimSignals = null) {
 
   // ---- Base, single-claim rules ----
   if (!Number.isNaN(claimAmount)) {
-    if (claimAmount >= 25000) {
-      add(6, 'Very high claim amount (>= 25,000).');
+    if (claimAmount > 50000) {
+      add(6, 'Very high claim amount (> 50,000).');
     } else if (claimAmount >= 10000) {
       add(4, 'High claim amount (>= 10,000).');
     }
