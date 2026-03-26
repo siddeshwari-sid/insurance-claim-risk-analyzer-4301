@@ -48,10 +48,27 @@ function parseCsvLine(line) {
 }
 
 function normalizeHeader(h) {
-  return String(h || '')
-    .trim()
-    .toLowerCase()
+  /**
+   * Normalize CSV headers to canonical snake_case keys.
+   *
+   * Supports:
+   * - snake_case: claim_id
+   * - spaced: "Claim Id" -> claim_id
+   * - camelCase/PascalCase: claimId / ClaimId -> claim_id
+   *
+   * This makes uploads resilient to common CSV formats produced by spreadsheets
+   * and sample datasets without weakening row-level validation.
+   */
+  const raw = String(h || '').trim();
+
+  // Convert camelCase/PascalCase boundaries to underscores before lowercasing:
+  //   claimId -> claim_Id -> claim_id
+  //   policyTenureMonths -> policy_Tenure_Months -> policy_tenure_months
+  const withUnderscores = raw
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/\s+/g, '_');
+
+  return withUnderscores.toLowerCase();
 }
 
 const REQUIRED_FIELDS = [
