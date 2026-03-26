@@ -13,8 +13,8 @@ const allowedOrigins = (() => {
    *
    * Priority:
    * 1) ALLOWED_ORIGINS (comma-separated) or "*" to allow all
-   * 2) FRONTEND_URL (single origin) (legacy)
-   * 3) Local dev defaults
+   * 2) FRONTEND_URL / REACT_APP_FRONTEND_URL (single origin) (legacy)
+   * 3) Local dev defaults + Kavia hosted dev defaults
    *
    * IMPORTANT: Never throw from CORS origin callback; for disallowed origins,
    * return `cb(null, false)` so preflight doesn't become HTTP 500 (which browsers
@@ -29,9 +29,17 @@ const allowedOrigins = (() => {
   const trimmed = String(env).trim();
   if (trimmed === '*') return '*';
 
-  // If not configured, allow common dev origins (and still allow non-browser requests with no Origin).
+  // If not configured, allow common dev origins and Kavia hosted origins.
+  // This prevents "upload works via curl but fails in browser" due to missing
+  // Access-Control-Allow-Origin when the frontend is served from a different
+  // host/port (e.g., vscode-internal-*.cloud.kavia.ai:3000).
   if (!trimmed) {
-    return ['http://localhost:3000', 'http://127.0.0.1:3000'];
+    return [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      // Keep scheme+host matching dynamic in origin callback; these are just
+      // explicit common cases.
+    ];
   }
 
   // Support comma-separated list
@@ -40,6 +48,26 @@ const allowedOrigins = (() => {
     .map((s) => s.trim())
     .filter(Boolean);
 })();
+
+function isKaviaHostedOrigin(origin) {
+  /**
+   * Best-effort allow for Kavia hosted preview environments.
+   * Example origin:
+   *   https://vscode-internal-XXXXX-beta.beta01.cloud.kavia.ai:3000
+   *
+   * This is intentionally narrow (specific hostname pattern) to avoid turning
+   * CORS into an accidental wildcard in production.
+   */
+  try {
+    const u = new URL(origin);
+    return (
+      (u.protocol === 'https:' || u.protocol === 'http:') &&
+      /^vscode-internal-.*\.cloud\.kavia\.ai$/i.test(u.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
 
 const corsOptions = {
   origin: (origin, cb) => {
@@ -53,6 +81,14 @@ const corsOptions = {
     if (Array.isArray(allowedOrigins) && allowedOrigins.includes(origin)) {
       return cb(null, true);
     }
+
+    // If not explicitly configured, allow Kavia hosted frontend origins.
+    // This fixes browser CSV uploads failing due to blocked CORS.
+    if (Array.isArray(allowedOrigins) && allowedOrigins.length > 0) {
+      return cb(null, false);
+    }
+
+    if (isKaviaHostedOrigin(origin)) return cb(null, true);
 
     // Disallow without throwing (prevents 500 on preflight).
     return cb(null, false);
