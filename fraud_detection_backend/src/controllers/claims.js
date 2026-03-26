@@ -68,6 +68,14 @@ class ClaimsController {
         policyTenureMonths: c.policyTenureMonths,
         priorClaimsCount: c.priorClaimsCount,
         riskLevel: c.riskLevel,
+
+        // Include claimant/provider metadata in summary responses so list UIs
+        // (Dashboard/Queue) can render names without calling the detail endpoint.
+        claimantName: c.claimantName,
+        providerName: c.providerName,
+        location: c.location,
+        policyNumber: c.policyNumber,
+
         // Include these in the upload response so the frontend can immediately surface new signals.
         riskScore: c.riskScore,
         explanations: c.explanations,
@@ -101,6 +109,13 @@ class ClaimsController {
         priorClaimsCount: c.priorClaimsCount,
         riskLevel: c.riskLevel,
         createdAt: c.createdAt,
+
+        // Critical for rendering claimant correctly in list/table views.
+        claimantName: c.claimantName,
+        providerName: c.providerName,
+        location: c.location,
+        policyNumber: c.policyNumber,
+
         // Provide a short explanation preview for queue display/search.
         explanations: c.explanations,
         fraudSignals: c.fraudSignals,
